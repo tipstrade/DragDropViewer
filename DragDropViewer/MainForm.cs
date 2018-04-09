@@ -1,4 +1,5 @@
-﻿using System;
+﻿using DragDropViewer.ExtensionMethods;
+using System;
 using System.Drawing;
 using System.IO;
 using System.Text;
@@ -79,6 +80,33 @@ namespace DragDropViewer {
         }
       }
 
+      var files = data.GetFileContentNames();
+      if (files.Length != 0) {
+        for (int i = 0; i < files.Length; i++) {
+          object parsedData;
+          using (var ms = data.GetFileContent(i)) {
+            ms.Position = 0;
+            using (var fs = new FileStream("y:\\DragDrop\\foo.jpeg", FileMode.Open, FileAccess.Write)) {
+              ms.WriteTo(fs);
+            }
+            ms.Position = 0;
+
+            try {
+              using (var img = new Bitmap(ms)) {
+                parsedData = new Bitmap(img);
+              }
+            } catch {
+              parsedData = ms.ToArray();
+            }
+          }
+          var item = new DataFormat() {
+            Data = parsedData,
+            Name = $"X-FileContent-{files[i]}"
+          };
+          listFormats.Items.Add(item);
+        }
+      }
+
       listFormats.EndUpdate();
       listFormats.SelectedIndex = -1;
       listFormats.SelectedIndexChanged += listFormats_SelectedIndexChanged;
@@ -120,14 +148,19 @@ namespace DragDropViewer {
           Lines = (string[])selected.Data
         };
 
-      } else if (selected.Type == typeof(MemoryStream)) {
-        var ms = selected.Data as MemoryStream;
-        ms.Position = 0;
+      } else if ((selected.Type == typeof(MemoryStream)) || (selected.Type == typeof(byte[]))) {
+        byte[] bytes;
+
+        if (selected.Type == typeof(MemoryStream)) {
+          bytes = ((MemoryStream)selected.Data).ToArray();
+        } else {
+          bytes = (byte[])selected.Data;
+        }
 
         string text;
         if (DisplayHex) {
           var sb = new StringBuilder();
-          foreach (byte b in ms.ToArray()) {
+          foreach (byte b in bytes) {
             if (sb.Length != 0) sb.Append(" ");
             sb.Append(b.ToString("x2"));
           }
@@ -144,8 +177,10 @@ namespace DragDropViewer {
             enc = Encoding.UTF8;
           }
 
-          using (var reader = new StreamReader(ms, enc, true, 1024, true)) {
-            text = reader.ReadToEnd();
+          using (var ms = new MemoryStream(bytes)) {
+            using (var reader = new StreamReader(ms, enc, true, 1024, true)) {
+              text = reader.ReadToEnd();
+            }
           }
         }
 
