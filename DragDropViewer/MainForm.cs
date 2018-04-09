@@ -11,6 +11,15 @@ namespace DragDropViewer {
     #endregion
 
     #region Properties
+    private bool DisplayHex {
+      get {
+        return butHex.Checked;
+      }
+      set {
+        butHex.Checked = value;
+      }
+    }
+
     private Control PreviewControl {
       get {
         return preview;
@@ -33,7 +42,7 @@ namespace DragDropViewer {
 
           value.Dock = DockStyle.Fill;
 
-          tableLayoutPanel1.Controls.Add(value, 1, 1);
+          tableLayoutPanel1.Controls.Add(value, 1, 0);
           tableLayoutPanel1.SetRowSpan(value, 2);
         }
       }
@@ -49,6 +58,8 @@ namespace DragDropViewer {
     #region Constructors
     public MainForm() {
       InitializeComponent();
+
+      saveFileDialog1.InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
     }
     #endregion
 
@@ -78,6 +89,8 @@ namespace DragDropViewer {
       var selected = SelectedItem;
 
       propertyGrid.SelectedObject = selected?.Data;
+
+      butSave.Enabled = butHex.Enabled = (selected != null) && (selected.Type == typeof(MemoryStream));
 
       if ((selected == null) || (selected.Data == null)) {
         PreviewControl = null;
@@ -111,21 +124,34 @@ namespace DragDropViewer {
         var ms = selected.Data as MemoryStream;
         ms.Position = 0;
 
-        Encoding enc;
-        if (
-          selected.Name.EndsWith("W")
-          || selected.Name.Contains("x-moz")
-          ) {
-          enc = Encoding.Unicode;
+        string text;
+        if (DisplayHex) {
+          var sb = new StringBuilder();
+          foreach (byte b in ms.ToArray()) {
+            if (sb.Length != 0) sb.Append(" ");
+            sb.Append(b.ToString("x2"));
+          }
+          text = sb.ToString();
+
         } else {
-          enc = Encoding.UTF8;
+          Encoding enc;
+          if (
+            selected.Name.EndsWith("W")
+            || selected.Name.Contains("x-moz")
+            ) {
+            enc = Encoding.Unicode;
+          } else {
+            enc = Encoding.UTF8;
+          }
+
+          using (var reader = new StreamReader(ms, enc, true, 1024, true)) {
+            text = reader.ReadToEnd();
+          }
         }
 
-        using (var reader = new StreamReader(ms, enc, true, 1024, true)) {
-          PreviewControl = new TextBox() {
-            Text = reader.ReadToEnd()
-          };
-        }
+        PreviewControl = new TextBox() {
+          Text = text
+        };
 
       } else if (selected.Type == typeof(Bitmap)) {
         PreviewControl = new PictureBox() {
@@ -143,6 +169,20 @@ namespace DragDropViewer {
     #region Event handlers
     private void butFromClipboard_Click(object sender, EventArgs e) {
       LoadData(Clipboard.GetDataObject());
+    }
+
+    private void butHex_CheckedChanged(object sender, EventArgs e) {
+      OnSelectedItemChanged();
+    }
+
+    private void butSave_Click(object sender, EventArgs e) {
+      saveFileDialog1.FileName = $"{SelectedItem.Name}.bin";
+      if (saveFileDialog1.ShowDialog() != DialogResult.OK) return;
+
+      using (var fs = new FileStream(saveFileDialog1.FileName, FileMode.Create, FileAccess.Write)) {
+        var ms = SelectedItem.Data as MemoryStream;
+        ms.WriteTo(fs);
+      }
     }
 
     private void listFormats_SelectedIndexChanged(object sender, EventArgs e) {
